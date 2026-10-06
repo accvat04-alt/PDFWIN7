@@ -1,0 +1,45 @@
+KySoPDF cho Windows 7 - HUONG DAN
+=================================
+
+PHAN A. Build (chi lam 1 lan, nho nguoi am IT; co the lam tren Windows 10)
+1. Cai Python 3.8.10 (ban cuoi cung ho tro Windows 7) tu python.org, tick "Add Python to PATH".
+   Chon 64-bit neu DLL token trong C:\Windows\System32 la 64-bit (thuong gap); neu may Win7 32-bit thi dung Python 32-bit.
+   Tren Windows 7 can cai SP1 va ban cap nhat KB2999226 truoc khi cai Python 3.8.
+2. Chep file index.html tu ban KySoPDF cu (thu muc _internal\index.html) vao cung thu muc voi agent.py.
+3. Chay build.bat.
+   Luu y: python-pkcs11 khong co san ban dong goi cho Windows; pip co the can
+   "Microsoft C++ Build Tools" de bien dich. Neu pip bao loi o buoc nay, cai Build Tools roi chay lai.
+4. Cai them Inno Setup 6 (mien phi, jrsoftware.org) truoc buoc 3 de build.bat tao luon bo cai.
+   Ket qua: Output\KySoPDF-Setup.exe - chi can gui file nay cho ke toan.
+   (Khong co Inno Setup thi chi ra thu muc dist\KySoPDF, zip lai gui di cung duoc.)
+
+PHAN B. Su dung tren may ke toan (Windows 7) - khong can Python
+1. Cai driver USB token (Viettel-CA), cam token. Chay KySoPDF-Setup.exe, bam Next.
+   May Win7 can SP1 + KB2999226 (neu chua co thi cai truoc).
+2. Bam bieu tuong 'Ky so PDF' tren Desktop, giu cua so nho 'Phan mem ky so PDF dang chay' mo.
+   (Log loi nam o %LOCALAPPDATA%\KySoPDF\agent.log) Trinh duyet tu mo http://127.0.0.1:8765
+   (Windows 7: dung Chrome 109 hoac Firefox ESR 115; ban moi hon khong chay duoc tren Win7.)
+3. Mo PDF -> keo khung ky -> chon chung thu -> nhap PIN -> Ky.
+4. Neu khong thay chung thu: bam "Kiem tra ket noi token".
+   Neu khong tu tim thay DLL: ghi duong dan DLL vao "pkcs11_lib" trong config.json
+   (vi du "C:\\Windows\\System32\\eTPKCS11.dll").
+
+LUU Y
+- Ban nay duoc viet moi, CHUA kiem thu voi token that. Hay ky thu tren file nhap truoc,
+  roi mo bang Adobe Reader / trang kiem tra chu ky de xac nhan hop le.
+- Ban in tren Windows 7 het ho tro bao mat tu 2020; nen nang cap len Windows 10/11 khi co the.
+
+GHI CHU RIENG CHO TOKEN VIETTEL
+- Cai bo cai "Viettel-CA" (driver/phan mem token) tren may truoc. Bo cai thuong chep DLL
+  viettel-ca_v6.dll (hoac ten gan giong) vao C:\Windows\System32 va SysWOW64.
+- Agent tu tim cac ten tren. Neu khong thay: mo thu muc C:\Windows\System32, tim "viettel*.dll",
+  roi ghi duong dan day du vao "pkcs11_lib" trong config.json (dung dau \\ kep).
+- Neu token Viettel cua ban thuc ra la loai SafeNet eToken, DLL se la eTPKCS11.dll (cung duoc tu tim).
+- Python 64-bit chi nap duoc DLL 64-bit (System32 tren Windows 64-bit); Python 32-bit dung DLL o SysWOW64.
+
+CACH NHANH: build tren GitHub (khong can cai Python/Inno Setup)
+1. Tao tai khoan GitHub (mien phi), tao repository moi o che do Private.
+2. Tai len repository toan bo file trong thu muc nay + file index.html cu,
+   va tao file .github/workflows/build.yml (Add file > Create new file, go dung ten do, dan noi dung).
+3. Mo tab Actions > "Build KySoPDF Setup" > Run workflow. Doi khoang 5-10 phut.
+4. Bam vao lan chay xong > muc Artifacts > tai "KySoPDF-Setup" (file zip chua KySoPDF-Setup.exe).
