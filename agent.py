@@ -70,24 +70,67 @@ CANDIDATE_DLLS = [
 ]
 
 
-def find_pkcs11_lib():
+def candidate_paths():
+    """Tra ve danh sach moi DLL PKCS#11 co the dung (theo thu tu uu tien)."""
     cfg_path = CFG.get("pkcs11_lib", "auto")
     if cfg_path and cfg_path.lower() != "auto":
-        return cfg_path if os.path.exists(cfg_path) else None
+        return [cfg_path] if os.path.exists(cfg_path) else []
+    import glob
     windir = os.environ.get("WINDIR", r"C:\Windows")
     folders = [os.path.join(windir, "System32"), os.path.join(windir, "SysWOW64")]
+    result = []
     for folder in folders:
         for name in CANDIDATE_DLLS:
             p = os.path.join(folder, name)
             if os.path.exists(p):
-                return p
-    # Du phong: bat ky DLL nao co chu "viettel" trong ten
-    import glob
+                result.append(p)
+    # DLL Viettel o System32/SysWOW64 va thu muc Token Agent/Token Manager
+    pf = [os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles")]
     for folder in folders:
-        hits = sorted(glob.glob(os.path.join(folder, "*viettel*.dll")))
-        if hits:
-            return hits[0]
-    return None
+        result += sorted(glob.glob(os.path.join(folder, "*viettel*.dll")))
+    for base in pf:
+        if base:
+            result += sorted(glob.glob(os.path.join(base, "Viettel*", "viettel*.dll")), reverse=True)
+    seen, out = set(), []
+    for p in result:
+        k = os.path.normcase(p)
+        if k not in seen:
+            seen.add(k)
+            out.append(p)
+    return out
+
+
+def probe(path):
+    """Nap DLL va dem so token dang cam. Tra ve (so_token, thong_bao_loi)."""
+    import pkcs11
+    try:
+        lib = pkcs11.lib(path)
+        return len(list(lib.get_slots(token_present=True))), None
+    except Exception as e:
+        return 0, str(e)
+
+
+_LIB_CACHE = {}
+
+
+def find_pkcs11_lib():
+    """Chon DLL dau tien thay token; neu khong DLL nao thay thi tra ve DLL dau tien."""
+    cands = candidate_paths()
+    if not cands:
+        return None
+    if len(cands) == 1:
+        return cands[0]
+    cached = _LIB_CACHE.get("path")
+    if cached and cached in cands:
+        n, _ = probe(cached)
+        if n:
+            return cached
+    for p in cands:
+        n, _ = probe(p)
+        if n:
+            _LIB_CACHE["path"] = p
+            return p
+    return cands[0]
 
 
 # ---------------------------------------------------------------- app
@@ -217,6 +260,14 @@ def diagnose():
         return jsonify(steps=steps)
     add(True, "Thu vien token", path)
     with TOKEN_LOCK:
+        import struct
+        add(True, "Python", "%d-bit. DLL token phai cung %d-bit." % (struct.calcsize("P") * 8, struct.calcsize("P") * 8))
+        for p in candidate_paths():
+            n, e = probe(p)
+            if e:
+                add(False, "Thu DLL", "%s -> loi nap: %s" % (p, e))
+            else:
+                add(n > 0, "Thu DLL", "%s -> thay %d token" % (p, n))
         try:
             import pkcs11
             lib = pkcs11.lib(path)
