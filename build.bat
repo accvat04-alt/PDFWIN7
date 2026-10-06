@@ -5,7 +5,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt || goto :err
 python -m PyInstaller --noconfirm --onedir --name KySoPDF ^
   --collect-all pyhanko --collect-all pyhanko_certvalidator --collect-all pkcs11 ^
-  --collect-all certifi --hidden-import pkcs11._pkcs11 ^
+  --collect-all certifi --collect-all reportlab --hidden-import pkcs11._pkcs11 ^
   agent.py || goto :err
 copy /Y config.json dist\KySoPDF\config.json
 copy /Y index.html dist\KySoPDF\index.html

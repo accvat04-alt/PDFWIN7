@@ -5,6 +5,11 @@
   "timestamp_url": "",
   "use_raw_mechanism": false,
   "allowed_origins": [],
+  "stamp_style": "foxit",
+  "stamp_logo": "",
+  "stamp_logo_opacity": 0.15,
+  "stamp_default_reason": "I am the author of this document",
+  "stamp_footer": "",
   "open_browser": true,
   "open_url": ""
 }

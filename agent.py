@@ -33,6 +33,11 @@ DEFAULTS = {
     "timestamp_url": "",
     "use_raw_mechanism": False,
     "stamp_show_dn": True,
+    "stamp_style": "foxit",          # "foxit" = giong Foxit Reader (ten to ben trai, chi tiet ben phai); "classic" = kieu cu
+    "stamp_logo": "",                # (tuy chon) duong dan file logo PNG lam chim mo ben trai, vi du C:\\KySoPDF\\logo.png
+    "stamp_logo_opacity": 0.15,
+    "stamp_default_reason": "I am the author of this document",
+    "stamp_footer": "",              # dong cuoi tuy chon, de trong neu khong can
     "open_browser": True,
     "open_url": "",
 }
@@ -326,6 +331,158 @@ def diagnose():
 
 
 # ---------------------------------------------------------------- ky
+# ---------------------------------------------------------------- giao dien chu ky kieu Foxit
+_OID_SHORT = {
+    "2.5.4.3": "CN", "2.5.4.6": "C", "2.5.4.7": "L", "2.5.4.8": "S",
+    "2.5.4.10": "O", "2.5.4.11": "OU", "1.2.840.113549.1.9.1": "E",
+}
+
+
+def cert_dn_and_cn(cert_der):
+    """Tra ve (CN, DN) theo thu tu RDN trong chung thu, dinh dang giong Foxit:
+    C=VN, L=AN GIANG, CN=..., OID.0.9.2342.19200300.100.1.1=MST:..."""
+    from cryptography import x509
+    cert = x509.load_der_x509_certificate(cert_der)
+    cn, parts = "", []
+    for rdn in cert.subject.rdns:
+        for a in rdn:
+            dotted = a.oid.dotted_string
+            name = _OID_SHORT.get(dotted, "OID." + dotted)
+            if dotted == "2.5.4.3" and not cn:
+                cn = a.value
+            parts.append("%s=%s" % (name, a.value))
+    return cn, ", ".join(parts)
+
+
+def _wrap(text, font, size, width):
+    """Ngat dong theo khoang trang; neu mot tu dai hon khung (vd OID...=MST:...) thi cat theo ky tu."""
+    from reportlab.lib.utils import simpleSplit
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    out = []
+    for ln in simpleSplit(text, font, size, width):
+        while stringWidth(ln, font, size) > width and len(ln) > 1:
+            k = len(ln)
+            while k > 1 and stringWidth(ln[:k], font, size) > width:
+                k -= 1
+            out.append(ln[:k])
+            ln = ln[k:]
+        out.append(ln)
+    return out
+
+
+def _fit_lines(paragraphs, font, width, height, max_size, min_size, leading=1.18):
+    """Chon co chu lon nhat (<= max_size) de cac doan van xuat hien vua khung width x height."""
+    size = max_size
+    while size >= min_size:
+        lines = []
+        for p in paragraphs:
+            lines += _wrap(p, font, size, width) if p else [""]
+        if len(lines) * size * leading <= height:
+            return size, lines
+        size -= 0.25
+    lines = []
+    for p in paragraphs:
+        lines += _wrap(p, font, min_size, width) if p else [""]
+    return min_size, lines
+
+
+def build_foxit_appearance(path, w, h, signer_name, dn, reason, location, when):
+    """Ve khung chu ky (PDF 1 trang kich thuoc w x h) giong Foxit:
+    ben trai: ten don vi (CN) chu to, can giua; ben phai: chi tiet chu nho."""
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    font_path = CFG.get("font_path")
+    if not font_path or not os.path.exists(font_path):
+        raise RuntimeError("Khong thay font %s (can font co dau tieng Viet, vi du Arial)." % font_path)
+    if "KsFont" not in pdfmetrics.getRegisteredFontNames():
+        pdfmetrics.registerFont(TTFont("KsFont", font_path))
+    FONT = "KsFont"
+
+    pad = max(2.0, min(w, h) * 0.04)
+    split = w * 0.46                      # ranh gioi trai / phai
+    left_w = split - pad * 1.5
+    right_x = split + pad * 0.5
+    right_w = w - right_x - pad
+
+    c = canvas.Canvas(path, pagesize=(w, h))
+
+    # chim mo (logo) tuy chon, nam sau ten don vi
+    logo = CFG.get("stamp_logo")
+    if logo and os.path.exists(logo):
+        try:
+            c.saveState()
+            c.setFillAlpha(float(CFG.get("stamp_logo_opacity", 0.15)))
+            side = min(split - pad, h - 2 * pad)
+            c.drawImage(logo, (split - side) / 2.0, (h - side) / 2.0, side, side,
+                        preserveAspectRatio=True, mask="auto")
+            c.restoreState()
+        except Exception:
+            traceback.print_exc()
+
+    # ---- ben trai: ten to
+    size, lines = _fit_lines([signer_name], FONT, left_w, h - 2 * pad, max_size=h * 0.30, min_size=5, leading=1.15)
+    lead = size * 1.15
+    y = h / 2.0 + (len(lines) * lead) / 2.0 - size * 0.85
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont(FONT, size)
+    for ln in lines:
+        c.drawCentredString(pad + left_w / 2.0, y, ln)
+        y -= lead
+
+    # ---- ben phai: chi tiet
+    paras = [
+        "Digitally signed by %s" % signer_name,
+        "DN: %s" % dn,
+        "Reason: %s" % reason,
+        "Location: %s" % (location if location and location != "-" else ""),
+        "Date: %s" % when,
+    ]
+    if CFG.get("stamp_footer"):
+        paras.append(CFG["stamp_footer"])
+    size, lines = _fit_lines(paras, FONT, right_w, h - 2 * pad, max_size=11, min_size=3.5, leading=1.15)
+    lead = size * 1.15
+    y = h - pad - size * 0.85
+    c.setFont(FONT, size)
+    for ln in lines:
+        c.drawString(right_x, y, ln)
+        y -= lead
+
+    c.showPage()
+    c.save()
+
+
+def sign_time_str():
+    """Dinh dang giong Foxit: 2026.10.06 11:01:25 +07'00'"""
+    now = datetime.now().astimezone()
+    off = now.utcoffset()
+    mins = int(off.total_seconds() // 60) if off else 0
+    sign = "+" if mins >= 0 else "-"
+    mins = abs(mins)
+    return now.strftime("%Y.%m.%d %H:%M:%S ") + "%s%02d'%02d'" % (sign, mins // 60, mins % 60)
+
+
+def build_foxit_stamp_style(pdf_path):
+    """Dung PDF ve san (pdf_path) lam nen toan bo khung chu ky."""
+    from pyhanko.stamp import TextStampStyle
+    from pyhanko.pdf_utils.content import ImportedPdfPage
+    kwargs = dict(
+        stamp_text=" ",
+        border_width=0,
+        background=ImportedPdfPage(pdf_path),
+        background_opacity=1.0,
+    )
+    try:
+        from pyhanko.pdf_utils.layout import SimpleBoxLayoutRule, AxisAlignment, Margins, InnerScaling
+        kwargs["background_layout"] = SimpleBoxLayoutRule(
+            x_align=AxisAlignment.ALIGN_MID, y_align=AxisAlignment.ALIGN_MID,
+            margins=Margins.uniform(0), inner_content_scaling=InnerScaling.STRETCH_FILL)
+    except Exception:
+        traceback.print_exc()
+    return TextStampStyle(**kwargs)
+
+
 def build_stamp_style():
     from pyhanko.stamp import TextStampStyle
     from pyhanko.pdf_utils.text import TextBoxStyle
@@ -362,7 +519,9 @@ def sign():
     cert_id = request.form.get("cert_id", "")
     cert_label = request.form.get("cert_label", "")
     pin = request.form.get("pin", "")
-    reason = request.form.get("reason", "").strip() or "Tôi đồng ý nội dung hợp đồng"
+    use_foxit = str(CFG.get("stamp_style", "foxit")).lower() == "foxit"
+    default_reason = CFG.get("stamp_default_reason") if use_foxit else "Tôi đồng ý nội dung hợp đồng"
+    reason = request.form.get("reason", "").strip() or default_reason
     location = request.form.get("location", "").strip() or "-"
     if not pin:
         return err("Chua nhap ma PIN.")
@@ -377,11 +536,13 @@ def sign():
             from pyhanko.sign.pkcs11 import PKCS11Signer
 
             lib, _ = open_lib()
-            target_slot = None
+            target_slot, target_der = None, b""
             for slot, _token, obj in iter_certs(lib):
                 c = parse_cert(obj)
                 if c["id"] == cert_id and c["label"] == cert_label:
                     target_slot = slot
+                    from pkcs11 import Attribute as _A
+                    target_der = bytes(obj[_A.VALUE])
                     break
             if target_slot is None:
                 return err("Khong tim thay chung thu tren token. Bam 'Lam moi' roi thu lai.")
@@ -405,15 +566,34 @@ def sign():
 
             with token.open(user_pin=pin) as session:
                 signer = PKCS11Signer(session, **kwargs)
+                tmp_appearance = None
+                if use_foxit:
+                    import tempfile
+                    signer_cn, signer_dn = cert_dn_and_cn(target_der)
+                    fd, tmp_appearance = tempfile.mkstemp(suffix=".pdf")
+                    os.close(fd)
+                    build_foxit_appearance(
+                        tmp_appearance, abs(box[2] - box[0]), abs(box[3] - box[1]),
+                        signer_cn, signer_dn, reason, location, sign_time_str())
+                    stamp_style = build_foxit_stamp_style(tmp_appearance)
+                else:
+                    stamp_style = build_stamp_style()
                 pdf_signer = signers.PdfSigner(
                     meta, signer=signer, timestamper=timestamper,
-                    stamp_style=build_stamp_style(),
+                    stamp_style=stamp_style,
                     new_field_spec=fields.SigFieldSpec(
                         sig_field_name=field_name, on_page=page - 1, box=box))
                 out = io.BytesIO()
-                pdf_signer.sign_pdf(
-                    writer, output=out,
-                    appearance_text_params={"reason": reason, "location": location})
+                try:
+                    pdf_signer.sign_pdf(
+                        writer, output=out,
+                        appearance_text_params={"reason": reason, "location": location})
+                finally:
+                    if tmp_appearance:
+                        try:
+                            os.remove(tmp_appearance)
+                        except OSError:
+                            pass
             out.seek(0)
             resp = make_response(out.read())
             resp.headers["Content-Type"] = "application/pdf"

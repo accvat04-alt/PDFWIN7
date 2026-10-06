@@ -29,7 +29,7 @@ jobs:
       - name: Build exe
         shell: cmd
         run: |
-          python -m PyInstaller --noconfirm --onedir --windowed --name KySoPDF --collect-all pyhanko --collect-all pyhanko_certvalidator --collect-all pkcs11 --collect-all certifi --collect-all uharfbuzz --collect-all fontTools --hidden-import pkcs11._pkcs11 agent.py
+          python -m PyInstaller --noconfirm --onedir --windowed --name KySoPDF --collect-all pyhanko --collect-all pyhanko_certvalidator --collect-all pkcs11 --collect-all certifi --collect-all reportlab --collect-all uharfbuzz --collect-all fontTools --hidden-import pkcs11._pkcs11 agent.py
           copy /Y config.json dist\KySoPDF\config.json
           copy /Y index.html dist\KySoPDF\index.html
 
