@@ -100,21 +100,60 @@ def candidate_paths():
     return out
 
 
-def probe(path):
-    """Nap DLL va dem so token dang cam. Tra ve (so_token, thong_bao_loi)."""
-    import pkcs11
+def _probe_child(path, outfile):
+    """Chay trong tien trinh con: nap DLL va ghi so token ra file JSON."""
+    res = {"n": 0, "err": None, "labels": []}
     try:
+        import pkcs11
         lib = pkcs11.lib(path)
-        return len(list(lib.get_slots(token_present=True))), None
+        slots = list(lib.get_slots(token_present=True))
+        res["n"] = len(slots)
+        for sl in slots:
+            try:
+                res["labels"].append(sl.get_token().label.strip())
+            except Exception:
+                pass
     except Exception as e:
-        return 0, str(e)
+        res["err"] = str(e)
+    with open(outfile, "w", encoding="utf-8") as f:
+        json.dump(res, f)
+
+
+def probe(path):
+    """Thu tung DLL trong tien trinh rieng (python-pkcs11 chi nap duoc 1 DLL / tien trinh).
+    Tra ve (so_token, thong_bao_loi)."""
+    import subprocess
+    import tempfile
+    fd, outfile = tempfile.mkstemp(suffix=".json")
+    os.close(fd)
+    try:
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--probe", path, outfile]
+        else:
+            cmd = [sys.executable, os.path.abspath(__file__), "--probe", path, outfile]
+        flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+        try:
+            subprocess.run(cmd, timeout=40, creationflags=flags)
+        except subprocess.TimeoutExpired:
+            return 0, "het thoi gian cho (DLL bi treo)"
+        try:
+            with open(outfile, "r", encoding="utf-8") as f:
+                res = json.load(f)
+        except Exception:
+            return 0, "tien trinh thu DLL bi loi/crash (thuong do sai 32/64-bit)"
+        return res.get("n", 0), res.get("err")
+    finally:
+        try:
+            os.remove(outfile)
+        except OSError:
+            pass
 
 
 _LIB_CACHE = {}
 
 
 def find_pkcs11_lib():
-    """Chon DLL dau tien thay token; neu khong DLL nao thay thi tra ve DLL dau tien."""
+    """Chon DLL dau tien thay token. Ket qua duoc nho lai sau lan dau co token."""
     cands = candidate_paths()
     if not cands:
         return None
@@ -122,9 +161,7 @@ def find_pkcs11_lib():
         return cands[0]
     cached = _LIB_CACHE.get("path")
     if cached and cached in cands:
-        n, _ = probe(cached)
-        if n:
-            return cached
+        return cached
     for p in cands:
         n, _ = probe(p)
         if n:
@@ -265,7 +302,7 @@ def diagnose():
         for p in candidate_paths():
             n, e = probe(p)
             if e:
-                add(False, "Thu DLL", "%s -> loi nap: %s" % (p, e))
+                add(False, "Thu DLL", "%s -> loi: %s" % (p, e))
             else:
                 add(n > 0, "Thu DLL", "%s -> thay %d token" % (p, n))
         try:
@@ -402,4 +439,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) >= 4 and sys.argv[1] == "--probe":
+        _probe_child(sys.argv[2], sys.argv[3])
+    else:
+        main()
