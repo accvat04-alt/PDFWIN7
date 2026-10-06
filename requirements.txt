@@ -1,7 +1,7 @@
 # Python 3.8.10 (ban 64-bit hoac 32-bit tuy token). Cac phien ban duoi day con ho tro Python 3.8.
+# Luu y: pyhanko-certvalidator se tu duoc pyhanko keo ve dung phien ban (0.23.x), khong ghim rieng.
 flask==2.2.5
 pyhanko==0.20.0
-pyhanko-certvalidator==0.24.0
 python-pkcs11==0.7.0
 cryptography==41.0.7
 fonttools==4.38.0
