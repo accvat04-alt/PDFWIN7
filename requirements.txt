@@ -1,4 +1,4 @@
-# Python 3.8.10 (32-bit). pyhanko-certvalidator duoc pyhanko tu keo ve (0.23.x), khong ghim rieng.
+# Python 3.7.9 (32-bit) - khong can KB2533623 tren Windows 7. pyhanko-certvalidator duoc pyhanko tu keo ve (0.23.x), khong ghim rieng.
 flask==2.2.5
 pyhanko[opentype]==0.20.0
 uharfbuzz>=0.25,<0.40
