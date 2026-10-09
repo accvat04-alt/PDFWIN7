@@ -19,14 +19,16 @@ jobs:
           python-version: "3.7"
           architecture: x86
           
-      - name: Cai thu vien
+           - name: Cai thu vien
         shell: pwsh
-        env:
-          SETUPTOOLS_USE_DISTUTILS: stdlib
         run: |
-          python -m pip install --upgrade pip "setuptools==59.8.0" wheel "cython<3"
+          python -m pip install --upgrade pip wheel "setuptools==58.5.3" "cython<3"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m pip list
           python -m pip install python-pkcs11==0.7.0 --no-build-isolation
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           python -m pip install -r requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Build exe
         shell: cmd
